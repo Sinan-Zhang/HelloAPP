@@ -11,50 +11,71 @@ def img2text(url):
     text = image_to_text_model(url)[0]["generated_text"]
     return text
 
-# text2story
-def text2story(text):
-    from transformers import T5Tokenizer, T5ForConditionalGeneration
-    import torch
+# ===================== 全局模型初始化（只加载一次，避免重复） =====================
+from transformers import T5Tokenizer, T5ForConditionalGeneration
+import torch
 
-    # 用更稳定的轻量模型
+# 全局缓存，避免每次生成都重新加载模型
+@st.cache_resource(show_spinner="Loading story model...")
+def load_story_model():
     tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
-    model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-small")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
-
-    # 强化版 Prompt：明确要求角色、动作、拟声词和快乐结局
-    prompt = f"""
-    Write a lively, fun story for kids aged 3-10 based on this picture: {text}
-    Follow these rules strictly:
-    1. 50-100 words only.
-    2. Give kids cute names (like Lily, Tom, Mia).
-    3. Add funny sound words (giggle, woof, splash, zoom).
-    4. Include simple actions (skipping, kicking, building).
-    5. Happy, warm ending.
-    6. No repeated phrases like "kids love to play".
-    Only return the story, no extra words.
-    """
-
-    # 生成故事
-    inputs = tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True).to(device)
-    outputs = model.generate(
-        **inputs,
-        max_length=150,
-        min_length=50,
-        temperature=0.8,  # 增加创意
-        top_p=0.9,
-        do_sample=True,
-        num_beams=4
+    model = T5ForConditionalGeneration.from_pretrained(
+        "google/flan-t5-small",
+        device_map="auto"  # 自动分配CPU/GPU，适配Streamlit
     )
-    story_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return tokenizer, model
 
-    # 兜底：确保字数和趣味性
-    story_words = story_text.split()
-    if len(story_words) < 50:
-        story_text += " They laughed until their tummies hurt, and promised to come back tomorrow!"
-    elif len(story_words) > 100:
-        story_text = " ".join(story_words[:100]) + "..."
-    return story_text
+story_tokenizer, story_model = load_story_model()
+
+# ===================== 修复后的 text2story 函数 =====================
+def text2story(text):
+    # 【关键修复】指令式Prompt：T5模型最吃这一套，明确要求NO REPETITION
+    prompt = """
+    Generate a fun story for 3-10 year olds about: {}.
+    Rules:
+    1. 50-100 words.
+    2. Use names like Leo, Mia, or Zara.
+    3. Add sound words (giggle, zoom, splash).
+    4. NO REPEATED SENTENCES.
+    5. Only output the story.
+    """.format(text)
+
+    # 编码输入
+    inputs = story_tokenizer(
+        prompt,
+        return_tensors="pt",
+        truncation=True,
+        max_length=128
+    ).to(story_model.device)
+
+    # 【关键修复】添加 no_repeat_ngram_size=2，彻底禁止重复
+    outputs = story_model.generate(
+        **inputs,
+        max_new_tokens=100,  # 只生成新内容，不含Prompt
+        min_new_tokens=50,
+        temperature=0.7,
+        top_p=0.85,
+        no_repeat_ngram_size=2,  # 核心：禁止2个词以上的重复序列
+        do_sample=True,
+        num_beams=3,
+        early_stopping=True
+    )
+
+    # 解码并清理
+    story = story_tokenizer.decode(outputs[0], skip_special_tokens=True)
+    
+    # 最终兜底：如果还残留Prompt，直接截断（T5偶尔会这样）
+    if "Generate a fun story" in story:
+        story = story.split("output the story.")[-1].strip()
+
+    # 字数控制
+    words = story.split()
+    if len(words) > 100:
+        story = " ".join(words[:100]) + "!"
+    elif len(words) < 50:
+        story += " They all cheered and promised to play again tomorrow!"
+
+    return story
 
 # text2audio
 def text2audio(story_text):
