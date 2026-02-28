@@ -2,6 +2,3 @@ streamlit
 transformers<5.0.0
 torch
 Pillow
-gTTS
-sentencepiece
-accelerate  # 新增：解决低资源下模型生成异常
