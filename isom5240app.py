@@ -13,8 +13,32 @@ def img2text(url):
 
 # text2story
 def text2story(text):
-    pipe = pipeline("text-generation", model="pranavpsv/genre-story-generator-v2")
-    story_text = pipe(text)[0]['generated_text']
+    # 新增：针对3-10岁儿童的趣味故事Prompt，明确生动性要求
+    prompt = f"""
+    Write a super fun story for kids aged 3-10 based on this scene: {text}
+    Rules to make the story lively:
+    1. Use simple words and short sentences (50-100 words total).
+    2. Add cute characters with names (like Lily the rabbit, Tom the dog).
+    3. Include funny sound words (like "woof woof", "giggle", "splash").
+    4. Add simple dialogue between characters (e.g., "Let's play!", said Lily).
+    5. Happy ending, warm and friendly tone.
+    6. No hard words, no scary content.
+    """
+    # 优化：增加模型生成参数，提升故事创意和可控性
+    pipe = pipeline(
+        "text-generation",
+        model="pranavpsv/genre-story-generator-v2",
+        model_kwargs={"temperature": 0.8, "top_p": 0.9, "max_length": 200, "min_length": 50}
+    )
+    # 生成故事并清理冗余内容
+    story_text = pipe(prompt)[0]['generated_text']
+    story_text = story_text.replace(prompt, "").strip()
+    # 兜底：确保字数在50-100词
+    story_words = story_text.split()
+    if len(story_words) > 100:
+        story_text = " ".join(story_words[:100]) + "..."
+    elif len(story_words) < 50:
+        story_text += " They laughed and played all day, and became best friends forever! 🎉"
     return story_text
 
 # text2audio
