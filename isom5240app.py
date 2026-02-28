@@ -13,32 +13,45 @@ def img2text(url):
 
 # text2story
 def text2story(text):
-    # 新增：针对3-10岁儿童的趣味故事Prompt，明确生动性要求
+    # 先导入需要的库
+    from transformers import T5Tokenizer, T5ForConditionalGeneration
+    import torch
+
+    # 初始化模型（轻量版，适合Streamlit Cloud）
+    tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
+    model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-small")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+
+    # 儿童向Prompt，明确要求生动、50-100词
     prompt = f"""
     Write a super fun story for kids aged 3-10 based on this scene: {text}
-    Rules to make the story lively:
-    1. Use simple words and short sentences (50-100 words total).
-    2. Add cute characters with names (like Lily the rabbit, Tom the dog).
-    3. Include funny sound words (like "woof woof", "giggle", "splash").
-    4. Add simple dialogue between characters (e.g., "Let's play!", said Lily).
-    5. Happy ending, warm and friendly tone.
-    6. No hard words, no scary content.
+    Rules:
+    1. 50-100 words, simple words.
+    2. Cute characters with names.
+    3. Funny sound words like "giggle" or "woof".
+    4. Happy ending.
+    Only return the story.
     """
-    # 优化：增加模型生成参数，提升故事创意和可控性
-    pipe = pipeline(
-        "text-generation",
-        model="pranavpsv/genre-story-generator-v2",
-        model_kwargs={"temperature": 0.8, "top_p": 0.9, "max_length": 200, "min_length": 50}
+
+    # 生成故事
+    inputs = tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True).to(device)
+    outputs = model.generate(
+        **inputs,
+        max_length=150,
+        min_length=50,
+        temperature=0.8,
+        top_p=0.9,
+        do_sample=True
     )
-    # 生成故事并清理冗余内容
-    story_text = pipe(prompt)[0]['generated_text']
-    story_text = story_text.replace(prompt, "").strip()
-    # 兜底：确保字数在50-100词
+    story_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    # 字数兜底
     story_words = story_text.split()
     if len(story_words) > 100:
         story_text = " ".join(story_words[:100]) + "..."
     elif len(story_words) < 50:
-        story_text += " They laughed and played all day, and became best friends forever! 🎉"
+        story_text += " They played happily until the sun went down, and everyone had a big smile!"
     return story_text
 
 # text2audio
