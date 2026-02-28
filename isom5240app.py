@@ -13,25 +13,26 @@ def img2text(url):
 
 # text2story
 def text2story(text):
-    # 先导入需要的库
     from transformers import T5Tokenizer, T5ForConditionalGeneration
     import torch
 
-    # 初始化模型（轻量版，适合Streamlit Cloud）
+    # 用更稳定的轻量模型
     tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
     model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-small")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
-    # 儿童向Prompt，明确要求生动、50-100词
+    # 强化版 Prompt：明确要求角色、动作、拟声词和快乐结局
     prompt = f"""
-    Write a super fun story for kids aged 3-10 based on this scene: {text}
-    Rules:
-    1. 50-100 words, simple words.
-    2. Cute characters with names.
-    3. Funny sound words like "giggle" or "woof".
-    4. Happy ending.
-    Only return the story.
+    Write a lively, fun story for kids aged 3-10 based on this picture: {text}
+    Follow these rules strictly:
+    1. 50-100 words only.
+    2. Give kids cute names (like Lily, Tom, Mia).
+    3. Add funny sound words (giggle, woof, splash, zoom).
+    4. Include simple actions (skipping, kicking, building).
+    5. Happy, warm ending.
+    6. No repeated phrases like "kids love to play".
+    Only return the story, no extra words.
     """
 
     # 生成故事
@@ -40,18 +41,19 @@ def text2story(text):
         **inputs,
         max_length=150,
         min_length=50,
-        temperature=0.8,
+        temperature=0.8,  # 增加创意
         top_p=0.9,
-        do_sample=True
+        do_sample=True,
+        num_beams=4
     )
     story_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-    # 字数兜底
+    # 兜底：确保字数和趣味性
     story_words = story_text.split()
-    if len(story_words) > 100:
+    if len(story_words) < 50:
+        story_text += " They laughed until their tummies hurt, and promised to come back tomorrow!"
+    elif len(story_words) > 100:
         story_text = " ".join(story_words[:100]) + "..."
-    elif len(story_words) < 50:
-        story_text += " They played happily until the sun went down, and everyone had a big smile!"
     return story_text
 
 # text2audio
