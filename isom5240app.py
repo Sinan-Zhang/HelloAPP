@@ -11,61 +11,10 @@ def img2text(url):
     text = image_to_text_model(url)[0]["generated_text"]
     return text
 
-# ===================== 全局模型初始化（只加载一次，避免重复） =====================
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-import torch
-
-# 全局缓存，避免每次生成都重新加载模型
-@st.cache_resource(show_spinner="Loading story model...")
-def load_story_model():
-    tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
-    model = T5ForConditionalGeneration.from_pretrained(
-        "google/flan-t5-small",
-        device_map="auto"  # 自动分配CPU/GPU，适配Streamlit
-    )
-    return tokenizer, model
-
-story_tokenizer, story_model = load_story_model()
-
 # text2story
 def text2story(text):
-    # 基于老师指定的模型，优化生成参数+精准Prompt
-    pipe = pipeline(
-        "text-generation",
-        model="pranavpsv/genre-story-generator-v2",
-        # 核心参数优化：增加创意、防重复、控制字数
-        model_kwargs={
-            "temperature": 0.8,    # 增加故事创意和趣味性
-            "top_p": 0.9,          # 提升内容多样性
-            "repetition_penalty": 1.2,  # 禁止重复内容
-            "max_length": 200,     # 控制故事总长度（对应80-120词）
-            "min_length": 100,     # 保证字数足够
-            "no_repeat_ngram_size": 2,  # 禁止2个词以上的重复
-            "do_sample": True      # 生成更有创意的内容
-        }
-    )
-    # 构造儿童向Prompt，明确要求生动、有角色/拟声词/情节
-    prompt = f"""
-    Write a fun, lively story for kids aged 3-10 based on this scene: {text}
-    Requirements:
-    1. 80-120 words (not too short!)
-    2. Give cute names to characters (e.g., Lily, Tom, Mia)
-    3. Add funny sound words (giggle, woof, splash, zoom)
-    4. Include simple, happy plot (playing, making friends, adventure)
-    5. Warm and happy ending
-    6. No repeated sentences or boring phrases
-    """
-    # 生成故事并清理冗余内容
-    story_text = pipe(prompt)[0]['generated_text']
-    # 只保留Prompt之后的故事内容，去掉规则本身
-    if "Requirements:" in story_text:
-        story_text = story_text.split("Requirements:")[-1].strip()
-    # 兜底：确保字数在80-120词
-    story_words = story_text.split()
-    if len(story_words) > 120:
-        story_text = " ".join(story_words[:120]) + "!"
-    elif len(story_words) < 80:
-        story_text += " They laughed and played until the sun went down, promising to meet again tomorrow for more fun adventures!"
+    pipe = pipeline("text-generation", model="pranavpsv/genre-story-generator-v2")
+    story_text = pipe(text)[0]['generated_text']
     return story_text
 
 # text2audio
