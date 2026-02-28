@@ -2,3 +2,9 @@ streamlit
 transformers<5.0.0
 torch
 Pillow
+streamlit
+transformers<5.0.0
+torch
+Pillow
+gTTS
+sentencepiece  # 新增：T5模型tokenizer必需的依赖
