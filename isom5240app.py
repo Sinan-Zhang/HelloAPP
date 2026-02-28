@@ -27,55 +27,46 @@ def load_story_model():
 
 story_tokenizer, story_model = load_story_model()
 
-# ===================== 修复后的 text2story 函数 =====================
+# text2story
 def text2story(text):
-    # 【关键修复】指令式Prompt：T5模型最吃这一套，明确要求NO REPETITION
-    prompt = """
-    Generate a fun story for 3-10 year olds about: {}.
-    Rules:
-    1. 50-100 words.
-    2. Use names like Leo, Mia, or Zara.
-    3. Add sound words (giggle, zoom, splash).
-    4. NO REPEATED SENTENCES.
-    5. Only output the story.
-    """.format(text)
-
-    # 编码输入
-    inputs = story_tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=128
-    ).to(story_model.device)
-
-    # 【关键修复】添加 no_repeat_ngram_size=2，彻底禁止重复
-    outputs = story_model.generate(
-        **inputs,
-        max_new_tokens=100,  # 只生成新内容，不含Prompt
-        min_new_tokens=50,
-        temperature=0.7,
-        top_p=0.85,
-        no_repeat_ngram_size=2,  # 核心：禁止2个词以上的重复序列
-        do_sample=True,
-        num_beams=3,
-        early_stopping=True
+    # 基于老师指定的模型，优化生成参数+精准Prompt
+    pipe = pipeline(
+        "text-generation",
+        model="pranavpsv/genre-story-generator-v2",
+        # 核心参数优化：增加创意、防重复、控制字数
+        model_kwargs={
+            "temperature": 0.8,    # 增加故事创意和趣味性
+            "top_p": 0.9,          # 提升内容多样性
+            "repetition_penalty": 1.2,  # 禁止重复内容
+            "max_length": 200,     # 控制故事总长度（对应80-120词）
+            "min_length": 100,     # 保证字数足够
+            "no_repeat_ngram_size": 2,  # 禁止2个词以上的重复
+            "do_sample": True      # 生成更有创意的内容
+        }
     )
-
-    # 解码并清理
-    story = story_tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-    # 最终兜底：如果还残留Prompt，直接截断（T5偶尔会这样）
-    if "Generate a fun story" in story:
-        story = story.split("output the story.")[-1].strip()
-
-    # 字数控制
-    words = story.split()
-    if len(words) > 100:
-        story = " ".join(words[:100]) + "!"
-    elif len(words) < 50:
-        story += " They all cheered and promised to play again tomorrow!"
-
-    return story
+    # 构造儿童向Prompt，明确要求生动、有角色/拟声词/情节
+    prompt = f"""
+    Write a fun, lively story for kids aged 3-10 based on this scene: {text}
+    Requirements:
+    1. 80-120 words (not too short!)
+    2. Give cute names to characters (e.g., Lily, Tom, Mia)
+    3. Add funny sound words (giggle, woof, splash, zoom)
+    4. Include simple, happy plot (playing, making friends, adventure)
+    5. Warm and happy ending
+    6. No repeated sentences or boring phrases
+    """
+    # 生成故事并清理冗余内容
+    story_text = pipe(prompt)[0]['generated_text']
+    # 只保留Prompt之后的故事内容，去掉规则本身
+    if "Requirements:" in story_text:
+        story_text = story_text.split("Requirements:")[-1].strip()
+    # 兜底：确保字数在80-120词
+    story_words = story_text.split()
+    if len(story_words) > 120:
+        story_text = " ".join(story_words[:120]) + "!"
+    elif len(story_words) < 80:
+        story_text += " They laughed and played until the sun went down, promising to meet again tomorrow for more fun adventures!"
+    return story_text
 
 # text2audio
 def text2audio(story_text):
